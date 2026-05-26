@@ -1,0 +1,293 @@
+// 호반/삼성 판촉물 ERP — Phase 1+2 스키마
+//
+// 비즈니스 흐름:
+//   클라이언트 발주(사업소별 분배)
+//     → 업체 발주(공장에 제작 요청)
+//     → 입고(천지로지스 등 보관위치로 수령)
+//     → 사업소 배송(클라이언트 사업소로 인도)
+//
+// 재고 = (vendor_order_lines 수령분) − (delivery_lines 합계)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ──────────── 마스터 ────────────
+
+model Client {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(50)
+  code      String   @unique @db.VarChar(20)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  sites      Site[]
+  orders     ClientOrder[]
+  deliveries Delivery[]
+  receipts   ClientReceipt[]
+
+  @@map("clients")
+}
+
+model Site {
+  id           Int      @id @default(autoincrement())
+  clientId     Int      @map("client_id")
+  name         String   @db.VarChar(80)
+  address      String?  @db.VarChar(255)
+  contactName  String?  @map("contact_name")  @db.VarChar(50)
+  contactPhone String?  @map("contact_phone") @db.VarChar(30)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt      @map("updated_at")
+
+  client     Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  orderLines ClientOrderLine[]
+  deliveries Delivery[]
+
+  @@unique([clientId, name])
+  @@index([clientId])
+  @@map("sites")
+}
+
+model Item {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(80)
+  category    String?  @db.VarChar(30)
+  unit        String   @default("개") @db.VarChar(10)
+  unitsPerBox Int      @default(1) @map("units_per_box")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
+
+  orderLines       ClientOrderLine[]
+  vendorOrderLines VendorOrderLine[]
+  deliveryLines    DeliveryLine[]
+  stockMovements   StockMovement[]
+
+  @@map("items")
+}
+
+model Vendor {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(80)
+  contactName String?  @map("contact_name") @db.VarChar(50)
+  phone       String?  @db.VarChar(30)
+  address     String?  @db.VarChar(255)
+  category    String?  @db.VarChar(30)
+  account     String?  @db.VarChar(120)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
+
+  vendorOrders VendorOrder[]
+  payments     VendorPayment[]
+
+  @@map("vendors")
+}
+
+model StockLocation {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(80)
+  kind      String   @db.VarChar(20) // 'warehouse' | 'onsite' | 'vendor'
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  deliveryLines       DeliveryLine[]
+  stockMovements      StockMovement[]
+  vendorReceivedLines VendorOrderLine[] @relation("VendorReceived")
+
+  @@map("stock_locations")
+}
+
+// ──────────── 클라이언트 발주 ────────────
+
+model ClientOrder {
+  id             Int       @id @default(autoincrement())
+  clientId       Int       @map("client_id")
+  roundNo        Int       @map("round_no")
+  roundLabel     String    @map("round_label") @db.VarChar(50)
+  orderDate      DateTime  @map("order_date") @db.Date
+  taxInvoiceDate DateTime? @map("tax_invoice_date") @db.Date
+  memo           String?
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt      @map("updated_at")
+
+  client       Client            @relation(fields: [clientId], references: [id])
+  lines        ClientOrderLine[]
+  vendorOrders VendorOrder[]
+  receipts     ClientReceipt[]
+
+  @@unique([clientId, roundNo])
+  @@index([clientId, orderDate])
+  @@map("client_orders")
+}
+
+model ClientOrderLine {
+  id       Int @id @default(autoincrement())
+  orderId  Int @map("order_id")
+  siteId   Int @map("site_id")
+  itemId   Int @map("item_id")
+  qtyUnits Int @default(0) @map("qty_units")
+  qtyBoxes Int @default(0) @map("qty_boxes")
+
+  order ClientOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  site  Site        @relation(fields: [siteId], references: [id])
+  item  Item        @relation(fields: [itemId], references: [id])
+
+  @@unique([orderId, siteId, itemId])
+  @@index([itemId])
+  @@map("client_order_lines")
+}
+
+// ──────────── 업체 발주 ────────────
+
+model VendorOrder {
+  id                   Int       @id @default(autoincrement())
+  vendorId             Int       @map("vendor_id")
+  relatedClientOrderId Int?      @map("related_client_order_id")
+  orderDate            DateTime  @map("order_date") @db.Date
+  paidDate             DateTime? @map("paid_date") @db.Date
+  memo                 String?
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt      @map("updated_at")
+
+  vendor             Vendor            @relation(fields: [vendorId], references: [id])
+  relatedClientOrder ClientOrder?      @relation(fields: [relatedClientOrderId], references: [id])
+  lines              VendorOrderLine[]
+  payments           VendorPayment[]
+
+  @@index([vendorId, orderDate])
+  @@map("vendor_orders")
+}
+
+model VendorOrderLine {
+  id                 Int       @id @default(autoincrement())
+  vendorOrderId      Int       @map("vendor_order_id")
+  itemId             Int       @map("item_id")
+  qtyUnits           Int       @default(0) @map("qty_units")
+  qtyBoxes           Int       @default(0) @map("qty_boxes")
+  receivedDate       DateTime? @map("received_date") @db.Date
+  receivedLocationId Int?      @map("received_location_id")
+
+  vendorOrder      VendorOrder    @relation(fields: [vendorOrderId], references: [id], onDelete: Cascade)
+  item             Item           @relation(fields: [itemId], references: [id])
+  receivedLocation StockLocation? @relation("VendorReceived", fields: [receivedLocationId], references: [id])
+
+  @@unique([vendorOrderId, itemId])
+  @@index([receivedLocationId])
+  @@map("vendor_order_lines")
+}
+
+// ──────────── 입고/배송 ────────────
+
+model Delivery {
+  id            Int      @id @default(autoincrement())
+  clientId      Int      @map("client_id")
+  siteId        Int      @map("site_id")
+  deliveryDate  DateTime @map("delivery_date") @db.Date
+  deliveryTime  String?  @map("delivery_time") @db.VarChar(10)
+  courier       String?  @db.VarChar(80)
+  clientContact String?  @map("client_contact") @db.VarChar(80)
+  memo          String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt      @map("updated_at")
+
+  client Client         @relation(fields: [clientId], references: [id])
+  site   Site           @relation(fields: [siteId], references: [id])
+  lines  DeliveryLine[]
+
+  @@index([clientId, deliveryDate])
+  @@map("deliveries")
+}
+
+model DeliveryLine {
+  id             Int  @id @default(autoincrement())
+  deliveryId     Int  @map("delivery_id")
+  itemId         Int  @map("item_id")
+  qtyUnits       Int  @default(0) @map("qty_units")
+  qtyBoxes       Int  @default(0) @map("qty_boxes")
+  fromLocationId Int? @map("from_location_id")
+
+  delivery     Delivery       @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  item         Item           @relation(fields: [itemId], references: [id])
+  fromLocation StockLocation? @relation(fields: [fromLocationId], references: [id])
+
+  @@unique([deliveryId, itemId])
+  @@index([itemId])
+  @@map("delivery_lines")
+}
+
+// ──────────── 재고 이동 (Phase 2: 위치별 재고 추적) ────────────
+
+model StockMovement {
+  id         Int      @id @default(autoincrement())
+  locationId Int      @map("location_id")
+  itemId     Int      @map("item_id")
+  direction  String   @db.VarChar(10) // 'in' | 'out' | 'transfer'
+  qtyUnits   Int      @default(0) @map("qty_units")
+  qtyBoxes   Int      @default(0) @map("qty_boxes")
+  refType    String?  @map("ref_type") @db.VarChar(30) // 'vendor_order' | 'delivery' | 'transfer'
+  refId      Int?     @map("ref_id")
+  occurredAt DateTime @default(now()) @map("occurred_at")
+  memo       String?
+
+  location StockLocation @relation(fields: [locationId], references: [id])
+  item     Item          @relation(fields: [itemId], references: [id])
+
+  @@index([locationId, itemId])
+  @@index([itemId, occurredAt])
+  @@map("stock_movements")
+}
+
+// ──────────── 정산 (Phase 3) ────────────
+
+model VendorPayment {
+  id            Int       @id @default(autoincrement())
+  vendorId      Int       @map("vendor_id")
+  vendorOrderId Int?      @map("vendor_order_id")
+  clientId      Int?      @map("client_id") // 어떤 클라이언트 건인지 (삼성/호반)
+  subject       String    @db.VarChar(200) // 예: "삼성 각티슈 5,400개 / 은마"
+  amount        Int // 원화 금액
+  vatIncluded   Boolean   @default(true) @map("vat_included")
+  account       String?   @db.VarChar(120) // 입금 계좌
+  scheduledDate DateTime? @map("scheduled_date") @db.Date
+  paidDate      DateTime? @map("paid_date") @db.Date
+  memo          String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  vendor      Vendor       @relation(fields: [vendorId], references: [id])
+  vendorOrder VendorOrder? @relation(fields: [vendorOrderId], references: [id])
+
+  @@index([vendorId])
+  @@index([clientId])
+  @@index([paidDate])
+  @@map("vendor_payments")
+}
+
+model ClientReceipt {
+  id            Int       @id @default(autoincrement())
+  clientId      Int       @map("client_id")
+  clientOrderId Int?      @map("client_order_id")
+  subject       String    @db.VarChar(200) // 예: "4월 삼성 판촉물"
+  amount        Int
+  scheduledDate DateTime? @map("scheduled_date") @db.Date
+  receivedDate  DateTime? @map("received_date") @db.Date
+  memo          String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  client      Client       @relation(fields: [clientId], references: [id])
+  clientOrder ClientOrder? @relation(fields: [clientOrderId], references: [id])
+
+  @@index([clientId])
+  @@index([receivedDate])
+  @@map("client_receipts")
+}

@@ -1,0 +1,46 @@
+# dependencies
+node_modules/
+.pnp.*
+
+# next.js
+.next/
+out/
+
+# env (NEVER commit secrets)
+.env
+.env.local
+.env.production
+.env.development.local
+*.env
+
+# prisma generated client (regenerated on build)
+web/src/generated/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# logs
+*.log
+dev.log
+prisma-dev.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+
+# build artifacts
+*.tsbuildinfo
+next-env.d.ts
+build/
+
+# excel work files (lock files, ~$ prefix)
+~$*.xlsx
+~$*.xlsm
+*.tmp
+
+# Excel source files (실무 원본은 별도 보관)
+*.xlsm
+*.xlsx
+!docs/**/*.xlsx
