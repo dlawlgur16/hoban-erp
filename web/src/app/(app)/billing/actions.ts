@@ -60,6 +60,37 @@ export async function markPaymentPaid(paymentId: number, paidDate: string | null
   revalidatePath("/");
 }
 
+const updatePaymentSchema = paymentSchema.extend({ id: z.number().int().positive() });
+export type UpdatePaymentInput = z.infer<typeof updatePaymentSchema>;
+
+export async function updateVendorPayment(input: UpdatePaymentInput): Promise<ActionResult> {
+  const parsed = updatePaymentSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "잘못된 입력" };
+  const d = parsed.data;
+  try {
+    await prisma.vendorPayment.update({
+      where: { id: d.id },
+      data: {
+        vendorId: d.vendorId,
+        vendorOrderId: d.vendorOrderId ?? null,
+        clientId: d.clientId ?? null,
+        subject: d.subject,
+        amount: d.amount,
+        vatIncluded: d.vatIncluded,
+        account: d.account ?? null,
+        scheduledDate: d.scheduledDate ? new Date(d.scheduledDate) : null,
+        paidDate: d.paidDate ? new Date(d.paidDate) : null,
+        memo: d.memo ?? null,
+      },
+    });
+    revalidatePath("/billing/payments");
+    revalidatePath("/");
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "수정 실패" };
+  }
+}
+
 export async function deleteVendorPayment(paymentId: number): Promise<void> {
   await prisma.vendorPayment.delete({ where: { id: paymentId } });
   revalidatePath("/billing/payments");
@@ -116,6 +147,34 @@ export async function markReceiptReceived(
   });
   revalidatePath("/billing/receipts");
   revalidatePath("/");
+}
+
+const updateReceiptSchema = receiptSchema.extend({ id: z.number().int().positive() });
+export type UpdateReceiptInput = z.infer<typeof updateReceiptSchema>;
+
+export async function updateClientReceipt(input: UpdateReceiptInput): Promise<ActionResult> {
+  const parsed = updateReceiptSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "잘못된 입력" };
+  const d = parsed.data;
+  try {
+    await prisma.clientReceipt.update({
+      where: { id: d.id },
+      data: {
+        clientId: d.clientId,
+        clientOrderId: d.clientOrderId ?? null,
+        subject: d.subject,
+        amount: d.amount,
+        scheduledDate: d.scheduledDate ? new Date(d.scheduledDate) : null,
+        receivedDate: d.receivedDate ? new Date(d.receivedDate) : null,
+        memo: d.memo ?? null,
+      },
+    });
+    revalidatePath("/billing/receipts");
+    revalidatePath("/");
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "수정 실패" };
+  }
 }
 
 export async function deleteClientReceipt(receiptId: number): Promise<void> {

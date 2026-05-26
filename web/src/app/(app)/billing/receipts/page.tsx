@@ -77,8 +77,10 @@ export default async function ReceiptsPage() {
                 receipts.map((r) => (
                   <ReceiptRow
                     key={r.id}
+                    clientId={client.id}
                     receipt={{
                       id: r.id,
+                      clientOrderId: r.clientOrderId,
                       subject: r.subject,
                       roundLabel: r.clientOrder?.roundLabel ?? null,
                       amount: r.amount,
@@ -86,6 +88,10 @@ export default async function ReceiptsPage() {
                       receivedDate: r.receivedDate ? r.receivedDate.toISOString().slice(0, 10) : null,
                       memo: r.memo ?? null,
                     }}
+                    clientOrders={clientOrders.map((co) => ({
+                      id: co.id,
+                      roundLabel: co.roundLabel,
+                    }))}
                   />
                 ))
               )}

@@ -91,9 +91,12 @@ export default async function PaymentsPage() {
                 payments.map((p) => (
                   <PaymentRow
                     key={p.id}
+                    clientId={client.id}
                     payment={{
                       id: p.id,
+                      vendorId: p.vendorId,
                       vendorName: p.vendor.name,
+                      vendorOrderId: p.vendorOrderId,
                       subject: p.subject,
                       amount: p.amount,
                       vatIncluded: p.vatIncluded,
@@ -102,6 +105,11 @@ export default async function PaymentsPage() {
                       paidDate: p.paidDate ? p.paidDate.toISOString().slice(0, 10) : null,
                       memo: p.memo ?? null,
                     }}
+                    vendors={vendors.map((v) => ({ id: v.id, name: v.name }))}
+                    vendorOrders={vendorOrders.map((vo) => ({
+                      id: vo.id,
+                      label: `${vo.orderDate.toISOString().slice(0, 10)} · ${vo.vendor.name}${vo.memo ? " · " + vo.memo : ""}`,
+                    }))}
                   />
                 ))
               )}
