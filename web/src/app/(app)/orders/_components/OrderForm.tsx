@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createClientOrder } from "../actions";
+import { createClientOrder, updateClientOrder } from "../actions";
 import { todayISO } from "@/lib/format";
 
 interface ClientInfo {
@@ -20,9 +20,21 @@ interface SiteOption {
   name: string;
 }
 
-interface NewOrderFormProps {
+export interface OrderFormInitialValues {
+  id: number;
+  roundNo: number;
+  roundLabel: string;
+  orderDate: string;
+  taxInvoiceDate: string | null;
+  memo: string | null;
+  lines: ReadonlyArray<{ siteId: number; itemId: number; qtyBoxes: number }>;
+}
+
+interface OrderFormProps {
+  mode: "create" | "edit";
   client: ClientInfo;
-  nextRoundNo: number;
+  nextRoundNo?: number;
+  initial?: OrderFormInitialValues;
   items: ReadonlyArray<ItemOption>;
   sites: ReadonlyArray<SiteOption>;
 }
@@ -34,25 +46,34 @@ function cellKey(siteId: number, itemId: number): CellKey {
   return `${siteId}-${itemId}` as CellKey;
 }
 
-const inputClass =
-  "w-full rounded-[var(--radius-md)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2 text-[13.5px] outline-none focus:border-[var(--color-accent)]";
-
-export default function NewOrderForm({
+export default function OrderForm({
+  mode,
   client,
   nextRoundNo,
+  initial,
   items,
   sites,
-}: NewOrderFormProps) {
+}: OrderFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [roundNo, setRoundNo] = useState<string>(String(nextRoundNo));
-  const [roundLabel, setRoundLabel] = useState<string>(`${nextRoundNo}차 발주`);
-  const [orderDate, setOrderDate] = useState<string>(todayISO());
-  const [taxInvoiceDate, setTaxInvoiceDate] = useState<string>("");
-  const [memo, setMemo] = useState<string>("");
-  const [matrix, setMatrix] = useState<Matrix>({});
+  const defaultRoundNo = initial?.roundNo ?? nextRoundNo ?? 1;
+  const [roundNo, setRoundNo] = useState<string>(String(defaultRoundNo));
+  const [roundLabel, setRoundLabel] = useState<string>(
+    initial?.roundLabel ?? `${defaultRoundNo}차 발주`
+  );
+  const [orderDate, setOrderDate] = useState<string>(initial?.orderDate ?? todayISO());
+  const [taxInvoiceDate, setTaxInvoiceDate] = useState<string>(initial?.taxInvoiceDate ?? "");
+  const [memo, setMemo] = useState<string>(initial?.memo ?? "");
+
+  const initialMatrix: Matrix = {};
+  if (initial) {
+    for (const l of initial.lines) {
+      initialMatrix[cellKey(l.siteId, l.itemId)] = { boxes: String(l.qtyBoxes) };
+    }
+  }
+  const [matrix, setMatrix] = useState<Matrix>(initialMatrix);
 
   function setCell(siteId: number, itemId: number, boxes: string) {
     setMatrix((m) => ({ ...m, [cellKey(siteId, itemId)]: { boxes } }));
@@ -82,18 +103,9 @@ export default function NewOrderForm({
   function submit() {
     setError(null);
     const rn = parseInt(roundNo, 10);
-    if (!Number.isFinite(rn) || rn <= 0) {
-      setError("차수 번호를 1 이상의 정수로 입력하세요.");
-      return;
-    }
-    if (!roundLabel.trim()) {
-      setError("차수 라벨을 입력하세요 (예: 1차 발주)");
-      return;
-    }
-    if (!orderDate) {
-      setError("발주일을 입력하세요.");
-      return;
-    }
+    if (!Number.isFinite(rn) || rn <= 0) return setError("차수 번호를 1 이상의 정수로 입력하세요.");
+    if (!roundLabel.trim()) return setError("차수 라벨을 입력하세요 (예: 1차 발주)");
+    if (!orderDate) return setError("발주일을 입력하세요.");
 
     type Line = { siteId: number; itemId: number; qtyBoxes: number; qtyUnits: number };
     const lines: Line[] = [];
@@ -101,22 +113,14 @@ export default function NewOrderForm({
       for (const i of items) {
         const b = getBoxes(s.id, i.id);
         if (b > 0) {
-          lines.push({
-            siteId: s.id,
-            itemId: i.id,
-            qtyBoxes: b,
-            qtyUnits: b * i.unitsPerBox,
-          });
+          lines.push({ siteId: s.id, itemId: i.id, qtyBoxes: b, qtyUnits: b * i.unitsPerBox });
         }
       }
     }
-    if (lines.length === 0) {
-      setError("수량을 하나 이상 입력하세요.");
-      return;
-    }
+    if (lines.length === 0) return setError("수량을 하나 이상 입력하세요.");
 
     startTransition(async () => {
-      const res = await createClientOrder({
+      const payload = {
         clientId: client.id,
         roundNo: rn,
         roundLabel: roundLabel.trim(),
@@ -124,15 +128,22 @@ export default function NewOrderForm({
         taxInvoiceDate: taxInvoiceDate || null,
         memo: memo.trim() || null,
         lines,
-      });
+      };
+      const res =
+        mode === "edit" && initial
+          ? await updateClientOrder({ ...payload, id: initial.id })
+          : await createClientOrder(payload);
       if (!res.success) {
         setError(res.error);
         return;
       }
-      router.push("/orders");
+      router.push(mode === "edit" && initial ? `/orders/${initial.id}` : "/orders");
       router.refresh();
     });
   }
+
+  const inputClass =
+    "w-full rounded-[var(--radius-md)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2 text-[13.5px] outline-none focus:border-[var(--color-accent)]";
 
   return (
     <div className="space-y-6">
@@ -173,7 +184,6 @@ export default function NewOrderForm({
             />
           </Field>
         </div>
-
         <Field label="메모 (선택)">
           <input
             type="text"
@@ -187,9 +197,7 @@ export default function NewOrderForm({
 
       <div className="rounded-[var(--radius-lg)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] overflow-hidden">
         <div className="px-6 py-4 border-b border-[var(--color-border)] flex items-center justify-between">
-          <h3 className="text-[14px] font-bold">
-            {client.name} 사업소 × 품목 매트릭스
-          </h3>
+          <h3 className="text-[14px] font-bold">{client.name} 사업소 × 품목 매트릭스</h3>
           <p className="text-[12px] text-[var(--color-ink-faint)]">
             박스 단위로 입력 — 개수는 자동 계산됩니다.
           </p>
@@ -292,7 +300,9 @@ export default function NewOrderForm({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => router.push("/orders")}
+            onClick={() =>
+              router.push(mode === "edit" && initial ? `/orders/${initial.id}` : "/orders")
+            }
             className="px-5 py-2.5 rounded-[var(--radius-md)] bg-[var(--color-surface)] border border-[var(--color-border-strong)] text-[13.5px] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-2)]"
           >
             취소
@@ -303,7 +313,7 @@ export default function NewOrderForm({
             disabled={pending}
             className="px-6 py-2.5 rounded-[var(--radius-md)] bg-[var(--color-accent)] text-[var(--color-accent-fg)] text-[13.5px] font-semibold hover:opacity-90 disabled:opacity-40"
           >
-            {pending ? "저장 중..." : "전체 저장"}
+            {pending ? "저장 중..." : mode === "edit" ? "수정 저장" : "전체 저장"}
           </button>
         </div>
       </div>

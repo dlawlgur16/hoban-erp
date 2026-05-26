@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createDelivery } from "../actions";
+import { createDelivery, updateDelivery } from "../actions";
 import { todayISO } from "@/lib/format";
 
 interface ClientInfo {
@@ -29,38 +29,58 @@ interface StockEntry {
   delivered: number;
 }
 
-interface NewDeliveryFormProps {
+export interface DeliveryFormInitialValues {
+  id: number;
+  siteId: number;
+  deliveryDate: string;
+  deliveryTime: string | null;
+  courier: string | null;
+  clientContact: string | null;
+  memo: string | null;
+  fromLocationId: number | null;
+  lines: ReadonlyArray<{ itemId: number; qtyBoxes: number }>;
+}
+
+interface DeliveryFormProps {
+  mode: "create" | "edit";
   client: ClientInfo;
+  initial?: DeliveryFormInitialValues;
   items: ReadonlyArray<ItemOption>;
   sites: ReadonlyArray<SiteOption>;
   locations: ReadonlyArray<LocationOption>;
-  stockData: ReadonlyArray<StockEntry>;
+  stockData: ReadonlyArray<StockEntry>; // 본인 라인 제외한 잔량 (수정 모드일 때)
 }
 
 const inputClass =
   "w-full rounded-[var(--radius-md)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2 text-[13.5px] outline-none focus:border-[var(--color-accent)]";
 
-export default function NewDeliveryForm({
+export default function DeliveryForm({
+  mode,
   client,
+  initial,
   items,
   sites,
   locations,
   stockData,
-}: NewDeliveryFormProps) {
+}: DeliveryFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [siteId, setSiteId] = useState<number>(0);
+  const [siteId, setSiteId] = useState<number>(initial?.siteId ?? 0);
   const [fromLocationId, setFromLocationId] = useState<number>(
-    locations[0]?.id ?? 0
+    initial?.fromLocationId ?? locations[0]?.id ?? 0
   );
-  const [deliveryDate, setDeliveryDate] = useState<string>(todayISO());
-  const [deliveryTime, setDeliveryTime] = useState<string>("");
-  const [courier, setCourier] = useState<string>("");
-  const [clientContact, setClientContact] = useState<string>("");
-  const [memo, setMemo] = useState<string>("");
-  const [boxesByItem, setBoxesByItem] = useState<Record<number, string>>({});
+  const [deliveryDate, setDeliveryDate] = useState<string>(initial?.deliveryDate ?? todayISO());
+  const [deliveryTime, setDeliveryTime] = useState<string>(initial?.deliveryTime ?? "");
+  const [courier, setCourier] = useState<string>(initial?.courier ?? "");
+  const [clientContact, setClientContact] = useState<string>(initial?.clientContact ?? "");
+  const [memo, setMemo] = useState<string>(initial?.memo ?? "");
+  const initialBoxes: Record<number, string> = {};
+  if (initial) {
+    for (const l of initial.lines) initialBoxes[l.itemId] = String(l.qtyBoxes);
+  }
+  const [boxesByItem, setBoxesByItem] = useState<Record<number, string>>(initialBoxes);
 
   const stockLookup = useMemo(() => {
     const map = new Map<string, { ordered: number; delivered: number }>();
@@ -82,7 +102,6 @@ export default function NewDeliveryForm({
     type Line = { itemId: number; qtyBoxes: number; qtyUnits: number };
     const lines: Line[] = [];
     const overItems: string[] = [];
-
     for (const it of items) {
       const b = parseInt(boxesByItem[it.id] ?? "", 10);
       if (Number.isFinite(b) && b > 0) {
@@ -95,7 +114,7 @@ export default function NewDeliveryForm({
     if (overItems.length > 0) return setError(`잔량 초과: ${overItems.join(" / ")}`);
 
     startTransition(async () => {
-      const res = await createDelivery({
+      const payload = {
         clientId: client.id,
         siteId,
         fromLocationId: fromLocationId || null,
@@ -105,12 +124,16 @@ export default function NewDeliveryForm({
         clientContact: clientContact.trim() || null,
         memo: memo.trim() || null,
         lines,
-      });
+      };
+      const res =
+        mode === "edit" && initial
+          ? await updateDelivery({ ...payload, id: initial.id })
+          : await createDelivery(payload);
       if (!res.success) {
         setError(res.error);
         return;
       }
-      router.push("/deliveries");
+      router.push(mode === "edit" && initial ? `/deliveries/${initial.id}` : "/deliveries");
       router.refresh();
     });
   }
@@ -133,7 +156,7 @@ export default function NewDeliveryForm({
               ))}
             </select>
           </Field>
-          <Field label="출고 위치 (어디서 나가는 물건인가)">
+          <Field label="출고 위치">
             <select
               value={fromLocationId}
               onChange={(e) => setFromLocationId(Number(e.target.value))}
@@ -283,7 +306,9 @@ export default function NewDeliveryForm({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => router.push("/deliveries")}
+            onClick={() =>
+              router.push(mode === "edit" && initial ? `/deliveries/${initial.id}` : "/deliveries")
+            }
             className="px-5 py-2.5 rounded-[var(--radius-md)] bg-[var(--color-surface)] border border-[var(--color-border-strong)] text-[13.5px] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-2)]"
           >
             취소
@@ -294,7 +319,7 @@ export default function NewDeliveryForm({
             disabled={pending || !siteId}
             className="px-6 py-2.5 rounded-[var(--radius-md)] bg-[var(--color-accent)] text-[var(--color-accent-fg)] text-[13.5px] font-semibold hover:opacity-90 disabled:opacity-40"
           >
-            {pending ? "저장 중..." : "전체 저장"}
+            {pending ? "저장 중..." : mode === "edit" ? "수정 저장" : "전체 저장"}
           </button>
         </div>
       </div>

@@ -79,3 +79,48 @@ export async function deleteDelivery(deliveryId: number): Promise<void> {
   revalidatePath("/");
   redirect("/deliveries");
 }
+
+const updateSchema = createSchema.extend({
+  id: z.number().int().positive(),
+});
+
+export type UpdateDeliveryInput = z.infer<typeof updateSchema>;
+
+export async function updateDelivery(input: UpdateDeliveryInput): Promise<ActionResult> {
+  const parsed = updateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? "잘못된 입력" };
+  }
+  const data = parsed.data;
+  const lines = data.lines.filter((l) => l.qtyUnits > 0 || l.qtyBoxes > 0);
+  if (lines.length === 0) return { success: false, error: "수량을 하나 이상 입력하세요." };
+
+  try {
+    const fromLocationId = data.fromLocationId ?? null;
+    await prisma.$transaction([
+      prisma.deliveryLine.deleteMany({ where: { deliveryId: data.id } }),
+      prisma.delivery.update({
+        where: { id: data.id },
+        data: {
+          clientId: data.clientId,
+          siteId: data.siteId,
+          deliveryDate: new Date(data.deliveryDate),
+          deliveryTime: data.deliveryTime ?? null,
+          courier: data.courier ?? null,
+          clientContact: data.clientContact ?? null,
+          memo: data.memo ?? null,
+        },
+      }),
+      prisma.deliveryLine.createMany({
+        data: lines.map((l) => ({ ...l, deliveryId: data.id, fromLocationId })),
+      }),
+    ]);
+    revalidatePath("/deliveries");
+    revalidatePath(`/deliveries/${data.id}`);
+    revalidatePath("/stock");
+    revalidatePath("/");
+    return { success: true, deliveryId: data.id };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "수정 실패" };
+  }
+}

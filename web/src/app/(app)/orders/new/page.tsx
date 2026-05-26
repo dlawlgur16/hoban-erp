@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentClient } from "@/lib/clientContext";
 import { PageHeader, Section } from "@/components/page";
-import NewOrderForm from "./NewOrderForm";
+import OrderForm from "../_components/OrderForm";
 
 export const dynamic = "force-dynamic";
 
@@ -27,15 +27,11 @@ export default async function NewOrderPage() {
         description="차수를 입력한 후 사업소별로 품목 수량을 일괄 입력합니다."
       />
       <Section>
-        <NewOrderForm
+        <OrderForm
+          mode="create"
           client={{ id: client.id, name: client.name }}
           nextRoundNo={(lastRound?.roundNo ?? 0) + 1}
-          items={items.map((i) => ({
-            id: i.id,
-            name: i.name,
-            unit: i.unit,
-            unitsPerBox: i.unitsPerBox,
-          }))}
+          items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit, unitsPerBox: i.unitsPerBox }))}
           sites={sites.map((s) => ({ id: s.id, name: s.name }))}
         />
       </Section>

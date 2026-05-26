@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createVendorOrder } from "../actions";
+import { createVendorOrder, updateVendorOrder } from "../actions";
 import { todayISO } from "@/lib/format";
 
 interface ClientInfo {
@@ -25,8 +25,20 @@ interface ClientOrderOption {
   roundLabel: string;
 }
 
-interface NewVendorOrderFormProps {
+export interface VendorOrderFormInitialValues {
+  id: number;
+  vendorId: number;
+  relatedClientOrderId: number | null;
+  orderDate: string;
+  paidDate: string | null;
+  memo: string | null;
+  lines: ReadonlyArray<{ itemId: number; qtyBoxes: number }>;
+}
+
+interface VendorOrderFormProps {
+  mode: "create" | "edit";
   client: ClientInfo;
+  initial?: VendorOrderFormInitialValues;
   vendors: ReadonlyArray<VendorOption>;
   items: ReadonlyArray<ItemOption>;
   clientOrders: ReadonlyArray<ClientOrderOption>;
@@ -35,22 +47,28 @@ interface NewVendorOrderFormProps {
 const inputClass =
   "w-full rounded-[var(--radius-md)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-2 text-[13.5px] outline-none focus:border-[var(--color-accent)]";
 
-export default function NewVendorOrderForm({
+export default function VendorOrderForm({
+  mode,
   client,
+  initial,
   vendors,
   items,
   clientOrders,
-}: NewVendorOrderFormProps) {
+}: VendorOrderFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [vendorId, setVendorId] = useState<number>(0);
-  const [relatedClientOrderId, setRelatedClientOrderId] = useState<number>(0);
-  const [orderDate, setOrderDate] = useState<string>(todayISO());
-  const [paidDate, setPaidDate] = useState<string>("");
-  const [memo, setMemo] = useState<string>("");
-  const [boxesByItem, setBoxesByItem] = useState<Record<number, string>>({});
+  const [vendorId, setVendorId] = useState<number>(initial?.vendorId ?? 0);
+  const [relatedClientOrderId, setRelatedClientOrderId] = useState<number>(
+    initial?.relatedClientOrderId ?? 0
+  );
+  const [orderDate, setOrderDate] = useState<string>(initial?.orderDate ?? todayISO());
+  const [paidDate, setPaidDate] = useState<string>(initial?.paidDate ?? "");
+  const [memo, setMemo] = useState<string>(initial?.memo ?? "");
+  const initBoxes: Record<number, string> = {};
+  if (initial) for (const l of initial.lines) initBoxes[l.itemId] = String(l.qtyBoxes);
+  const [boxesByItem, setBoxesByItem] = useState<Record<number, string>>(initBoxes);
 
   function submit() {
     setError(null);
@@ -68,19 +86,23 @@ export default function NewVendorOrderForm({
     if (lines.length === 0) return setError("수량을 하나 이상 입력하세요.");
 
     startTransition(async () => {
-      const res = await createVendorOrder({
+      const payload = {
         vendorId,
         relatedClientOrderId: relatedClientOrderId || null,
         orderDate,
         paidDate: paidDate || null,
         memo: memo.trim() || null,
         lines,
-      });
+      };
+      const res =
+        mode === "edit" && initial
+          ? await updateVendorOrder({ ...payload, id: initial.id })
+          : await createVendorOrder(payload);
       if (!res.success) {
         setError(res.error);
         return;
       }
-      router.push("/vendor-orders");
+      router.push(mode === "edit" && initial ? `/vendor-orders/${initial.id}` : "/vendor-orders");
       router.refresh();
     });
   }
@@ -140,7 +162,7 @@ export default function NewVendorOrderForm({
             type="text"
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
-            placeholder="예: 호반 3차 미용티슈 (본사·면목·자양) 6,000개"
+            placeholder="예: 호반 3차 미용티슈 6,000개"
             className={inputClass}
           />
         </Field>
@@ -158,9 +180,7 @@ export default function NewVendorOrderForm({
               <th className="px-4 py-3 text-center font-semibold text-[var(--color-ink-faint)] w-[140px]">
                 수량 (박스)
               </th>
-              <th className="px-4 py-3 text-right font-semibold text-[var(--color-ink-faint)]">
-                개수
-              </th>
+              <th className="px-4 py-3 text-right font-semibold text-[var(--color-ink-faint)]">개수</th>
             </tr>
           </thead>
           <tbody>
@@ -199,12 +219,20 @@ export default function NewVendorOrderForm({
         </table>
       </div>
 
+      {mode === "edit" && (
+        <div className="rounded-[var(--radius-md)] bg-[#fff8ea] border border-[#f0d59f] px-4 py-3 text-[12.5px] text-[var(--color-warning)]">
+          ⚠ 라인 수정 시 기존 입고 처리(입고일/보관위치)는 초기화됩니다. 수정 후 다시 입고 체크하세요.
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-4 pt-2">
         <div className="text-[13px] text-[var(--color-danger)] min-h-[20px]">{error}</div>
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => router.push("/vendor-orders")}
+            onClick={() =>
+              router.push(mode === "edit" && initial ? `/vendor-orders/${initial.id}` : "/vendor-orders")
+            }
             className="px-5 py-2.5 rounded-[var(--radius-md)] bg-[var(--color-surface)] border border-[var(--color-border-strong)] text-[13.5px] text-[var(--color-ink-muted)] hover:bg-[var(--color-surface-2)]"
           >
             취소
@@ -215,7 +243,7 @@ export default function NewVendorOrderForm({
             disabled={pending || !vendorId}
             className="px-6 py-2.5 rounded-[var(--radius-md)] bg-[var(--color-accent)] text-[var(--color-accent-fg)] text-[13.5px] font-semibold hover:opacity-90 disabled:opacity-40"
           >
-            {pending ? "저장 중..." : "전체 저장"}
+            {pending ? "저장 중..." : mode === "edit" ? "수정 저장" : "전체 저장"}
           </button>
         </div>
       </div>

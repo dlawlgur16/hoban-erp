@@ -12,6 +12,9 @@ out/
 .env.production
 .env.development.local
 *.env
+*.local
+.amplify-app-id.local
+.rds-password.local
 
 # prisma generated client (regenerated on build)
 web/src/generated/

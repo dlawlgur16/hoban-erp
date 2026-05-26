@@ -69,3 +69,50 @@ export async function deleteClientOrder(orderId: number): Promise<void> {
   revalidatePath("/");
   redirect("/orders");
 }
+
+const updateSchema = createSchema.extend({
+  id: z.number().int().positive(),
+});
+
+export type UpdateOrderInput = z.infer<typeof updateSchema>;
+
+export async function updateClientOrder(input: UpdateOrderInput): Promise<ActionResult> {
+  const parsed = updateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? "입력값이 올바르지 않습니다." };
+  }
+  const data = parsed.data;
+  const lines = data.lines.filter((l) => l.qtyUnits > 0 || l.qtyBoxes > 0);
+  if (lines.length === 0) return { success: false, error: "수량을 하나 이상 입력하세요." };
+
+  try {
+    await prisma.$transaction([
+      prisma.clientOrderLine.deleteMany({ where: { orderId: data.id } }),
+      prisma.clientOrder.update({
+        where: { id: data.id },
+        data: {
+          clientId: data.clientId,
+          roundNo: data.roundNo,
+          roundLabel: data.roundLabel,
+          orderDate: new Date(data.orderDate),
+          taxInvoiceDate: data.taxInvoiceDate ? new Date(data.taxInvoiceDate) : null,
+          memo: data.memo ?? null,
+        },
+      }),
+      prisma.clientOrderLine.createMany({
+        data: lines.map((l) => ({ ...l, orderId: data.id })),
+      }),
+    ]);
+    revalidatePath("/orders");
+    revalidatePath(`/orders/${data.id}`);
+    revalidatePath("/stock");
+    revalidatePath("/");
+    return { success: true, orderId: data.id };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "수정 실패";
+    if (msg.includes("Unique") || msg.includes("unique")) {
+      return { success: false, error: "같은 클라이언트의 동일 차수가 이미 존재합니다." };
+    }
+    return { success: false, error: msg };
+  }
+}

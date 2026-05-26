@@ -43,6 +43,12 @@ export default async function DeliveryDetailPage({ params }: PageProps) {
             >
               목록으로
             </Link>
+            <Link
+              href={`/deliveries/${delivery.id}/edit`}
+              className="rounded-[var(--radius-md)] bg-[var(--color-accent)] px-4 py-2 text-[13px] font-semibold text-[var(--color-accent-fg)] hover:opacity-90"
+            >
+              수정
+            </Link>
             <DeleteDeliveryButton deliveryId={delivery.id} />
           </div>
         }

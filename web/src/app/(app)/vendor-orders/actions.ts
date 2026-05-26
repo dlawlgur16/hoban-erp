@@ -79,3 +79,46 @@ export async function deleteVendorOrder(vendorOrderId: number): Promise<void> {
   revalidatePath("/vendor-orders");
   redirect("/vendor-orders");
 }
+
+const updateSchema = createSchema.extend({
+  id: z.number().int().positive(),
+});
+
+export type UpdateVendorOrderInput = z.infer<typeof updateSchema>;
+
+export async function updateVendorOrder(input: UpdateVendorOrderInput): Promise<ActionResult> {
+  const parsed = updateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? "잘못된 입력" };
+  }
+  const data = parsed.data;
+  const lines = data.lines.filter((l) => l.qtyUnits > 0 || l.qtyBoxes > 0);
+  if (lines.length === 0) return { success: false, error: "수량을 하나 이상 입력하세요." };
+
+  try {
+    // 라인 수정 시 기존 입고일/위치 정보 유지하려면 더 복잡한 머지 로직 필요.
+    // 단순화: 라인 삭제 후 재생성 (입고 처리는 다시 해야 함).
+    await prisma.$transaction([
+      prisma.vendorOrderLine.deleteMany({ where: { vendorOrderId: data.id } }),
+      prisma.vendorOrder.update({
+        where: { id: data.id },
+        data: {
+          vendorId: data.vendorId,
+          relatedClientOrderId: data.relatedClientOrderId ?? null,
+          orderDate: new Date(data.orderDate),
+          paidDate: data.paidDate ? new Date(data.paidDate) : null,
+          memo: data.memo ?? null,
+        },
+      }),
+      prisma.vendorOrderLine.createMany({
+        data: lines.map((l) => ({ ...l, vendorOrderId: data.id })),
+      }),
+    ]);
+    revalidatePath("/vendor-orders");
+    revalidatePath(`/vendor-orders/${data.id}`);
+    revalidatePath("/stock");
+    return { success: true, vendorOrderId: data.id };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "수정 실패" };
+  }
+}

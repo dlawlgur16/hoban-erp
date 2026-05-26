@@ -5,7 +5,17 @@ import { PrismaClient } from "../src/generated/prisma/client.js";
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is not set");
 
-const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+const useSsl =
+  /sslmode=require/i.test(connectionString) || connectionString.includes("rds.amazonaws.com");
+const cleanedUrl = useSsl
+  ? connectionString.replace(/([?&])sslmode=[^&]+&?/g, "$1").replace(/[?&]$/, "")
+  : connectionString;
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({
+    connectionString: cleanedUrl,
+    ssl: useSsl ? { rejectUnauthorized: false } : undefined,
+  }),
+});
 
 // ──────────── 마스터 정의 ────────────
 
