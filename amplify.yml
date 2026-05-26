@@ -10,10 +10,13 @@ applications:
               echo "DATABASE_URL=$DATABASE_URL" >> .env.production
               echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> .env.production
               echo "SESSION_SECRET=$SESSION_SECRET" >> .env.production
-              echo "✓ .env.production created (lines=$(wc -l < .env.production))"
         build:
           commands:
             - npm run build
+            - cp -r public .next/standalone/public 2>/dev/null || true
+            - cp -r .next/static .next/standalone/.next/static
+            - cp .env.production .next/standalone/.env.production 2>/dev/null || true
+            - cp -r src/generated/prisma .next/standalone/src/generated/prisma 2>/dev/null || true
       artifacts:
         baseDirectory: .next
         files:
