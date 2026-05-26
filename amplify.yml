@@ -6,6 +6,11 @@ applications:
           commands:
             - npm ci
             - npx prisma generate
+            - |
+              echo "DATABASE_URL=$DATABASE_URL" >> .env.production
+              echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> .env.production
+              echo "SESSION_SECRET=$SESSION_SECRET" >> .env.production
+              echo "✓ .env.production created (lines=$(wc -l < .env.production))"
         build:
           commands:
             - npm run build
