@@ -13,21 +13,6 @@ applications:
         build:
           commands:
             - npm run build
-            - |
-              if [ -d ".next/standalone" ]; then
-                echo "▶ Standalone build detected — copying public/static into standalone"
-                mkdir -p .next/standalone/.next
-                cp -r public .next/standalone/ 2>/dev/null || true
-                cp -r .next/static .next/standalone/.next/static
-                cp .env.production .next/standalone/ 2>/dev/null || true
-                if [ -d "src/generated/prisma" ]; then
-                  mkdir -p .next/standalone/src/generated
-                  cp -r src/generated/prisma .next/standalone/src/generated/
-                fi
-                echo "✓ Standalone artifact ready at .next/standalone"
-              else
-                echo "ℹ Standalone build not found, using .next directly"
-              fi
       artifacts:
         baseDirectory: .next
         files:
