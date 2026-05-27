@@ -1,24 +1,22 @@
 version: 1
-applications:
-  - frontend:
-      phases:
-        preBuild:
-          commands:
-            - npm ci
-            - npx prisma generate
-            - |
-              echo "DATABASE_URL=$DATABASE_URL" >> .env.production
-              echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> .env.production
-              echo "SESSION_SECRET=$SESSION_SECRET" >> .env.production
-        build:
-          commands:
-            - npm run build
-      artifacts:
-        baseDirectory: .next
-        files:
-          - '**/*'
-      cache:
-        paths:
-          - node_modules/**/*
-          - .next/cache/**/*
-    appRoot: web
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+        - npx prisma generate
+        - |
+          echo "DATABASE_URL=$DATABASE_URL" >> .env.production
+          echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> .env.production
+          echo "SESSION_SECRET=$SESSION_SECRET" >> .env.production
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*

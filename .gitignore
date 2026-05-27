@@ -1,12 +1,38 @@
 # dependencies
-node_modules/
+/node_modules
+/.pnp
 .pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
 
 # next.js
-.next/
-out/
+/.next/
+/out/
 
-# env (NEVER commit secrets)
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+Thumbs.db
+
+# debug / logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log
+dev.log
+prisma-dev.log
+
+# env files (NEVER commit secrets)
 .env
 .env.local
 .env.production
@@ -15,35 +41,28 @@ out/
 *.local
 .amplify-app-id.local
 .rds-password.local
+.rds-endpoint.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
 
 # prisma generated client (regenerated on build)
-web/src/generated/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# logs
-*.log
-dev.log
-prisma-dev.log
-npm-debug.log*
+/src/generated/prisma
 
 # IDE
 .vscode/
 .idea/
 
-# build artifacts
-*.tsbuildinfo
-next-env.d.ts
-build/
-
-# excel work files (lock files, ~$ prefix)
+# excel work files
 ~$*.xlsx
 ~$*.xlsm
 *.tmp
 
-# Excel source files (실무 원본은 별도 보관)
+# Excel source files (실무 원본은 docs/ 안에만 commit)
 *.xlsm
 *.xlsx
 !docs/**/*.xlsx
